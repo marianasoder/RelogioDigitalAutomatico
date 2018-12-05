@@ -58,7 +58,7 @@ def arduinoConnect():
     print "Conectado!"
 
     # espera a conecao acontecer
-    while(not conexao.isOpen):
+    while(not conexao.isOpen()):
         pass
 
     print "Conexao estabelecida!"

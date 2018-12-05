@@ -1,8 +1,15 @@
 
 #include <LiquidCrystal.h>
+#include <avr/interrupt.h>
+#define set_bit(X, n) (X |= (1<<n))
+
 //Define os pinos que serão utilizados para ligação ao display
 const int rs = 8, en = 9, d4 = 4, d5 = 5, d6 = 6, d7 = 7;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+// definicao de botao
+const int botao = 10;
+int estadoBotao = 0;
+bool modoOperacao = true;
 
 String aux;
 char buff[22];
@@ -17,11 +24,18 @@ const String condClim[] = {
   "    Nublado"
 };
 
-int cont = 0;
+int countMinuto = 60, count = 0;
 int temp, umid, condicao;
 int seg = 00, minu= 00, hor = 00; 
 int dia = 00, mes = 00, ano = 0000, diaSem = 0;
 const int diasPorMes[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+
+ISR(TIMER2_OVF_vect){
+  count = (count+1)%31;
+  if(!count){
+    updateHora();
+  }
+}
 
 bool checkAnoBis(){
   /*
@@ -70,6 +84,7 @@ void updateHora(){
   
   // se os segundos forem 0
   if(!seg){
+    countMinuto++; 
     minu = (minu+1)%60;
 
     // se os min e os segs forem 0
@@ -93,6 +108,7 @@ void getData(){
   Serial.println("data");
 
   Serial.flush();
+  while(!Serial.available());
   aux  = Serial.readString();
 
   aux.toCharArray(buff, 22);
@@ -110,7 +126,7 @@ void getClima(){
   Serial.flush();
 
   Serial.println("weather");
-
+  while(!Serial.available());
   Serial.flush();
   aux = Serial.readString();
 
@@ -130,9 +146,6 @@ void lcdPrintTwoDigNum(int num){
 }
 
 void printData(){
-    //Limpa a tela
-    lcd.clear();
-   
     lcd.setCursor(4, 0);
     lcdPrintTwoDigNum(hor);
     lcd.print("h");
@@ -149,15 +162,9 @@ void printData(){
     lcd.print("/");
     lcd.print(ano);
   
-    delay(1000);
-  
-    updateHora();
 }
 
 void printClima(){
-  //Limpa a tela
-    lcd.clear();
-   
     lcd.setCursor(2, 0);
     lcdPrintTwoDigNum(temp);
     lcd.print(" \337C / H ");
@@ -168,7 +175,6 @@ void printClima(){
     lcd.setCursor(0, 1);
     lcd.print(condClim[condicao]);
   
-    delay(1000);
 }
 
 void setup(){
@@ -178,24 +184,36 @@ void setup(){
    while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
-  //getData();
+  pinMode(botao, INPUT_PULLUP);
+  lcd.clear();
+  
+  TCCR2B = (1<<CS22)|(1<<CS20) | (1<<CS21); // estouro em media a cada 1 segundo, prescaler = 1024
+  TIMSK2 = 1<<TOIE2; // habilita interrupcao do TC2
+  sei(); // habilita a interrupcao global
 }
  
 void loop()
 { 
-  cont = 0;
-  
-  getData();
-  while(cont < 20){
-    printData();
-    cont = (cont+1);
+  estadoBotao = digitalRead(botao);
+  if(estadoBotao == LOW){
+    while(estadoBotao == LOW){
+      estadoBotao = digitalRead(botao);
+    }
+    modoOperacao = !modoOperacao;
+
+    //Limpa a tela
+    lcd.clear(); // MUDAR DE LUGAR
   }
-  
-  cont = 0;
-  
-  getClima();
-  while(cont < 10){
+
+  if(countMinuto > 59){
+    getData();
+    getClima();
+    countMinuto = 0;
+  }
+
+  if(modoOperacao){
+    printData();
+  } else {
     printClima();
-    cont = (cont+1);
   }
 }
